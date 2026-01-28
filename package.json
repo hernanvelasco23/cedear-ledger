@@ -1,0 +1,8 @@
+{
+  "name": "cedear-ledger",
+  "private": true,
+  "scripts": {
+    "dev:web": "cd apps/web && npm run dev",
+    "dev:api": "cd apps/api/CedearLedger.Api && dotnet run"
+  }
+}
