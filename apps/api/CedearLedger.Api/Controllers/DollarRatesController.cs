@@ -1,6 +1,7 @@
-using CedearLedger.Infrastructure.Persistence.SqlServer;
+using CedearLedger.Application.DollarRates;
+using CedearLedger.Domain.Models;
+using MediatR;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 
 namespace CedearLedger.Api.Controllers;
 
@@ -8,17 +9,22 @@ namespace CedearLedger.Api.Controllers;
 [Route("api/dollar-rates")]
 public sealed class DollarRatesController : ControllerBase
 {
-    private readonly CedearLedgerDbContext _dbContext;
+    private readonly IMediator _mediator;
 
-    public DollarRatesController(CedearLedgerDbContext dbContext)
+    public DollarRatesController(IMediator mediator)
     {
-        _dbContext = dbContext;
+        _mediator = mediator;
     }
 
     [HttpPost]
-    public async Task<ActionResult<DollarRate>> PostAsync([FromBody] CreateDollarRateRequest request, CancellationToken cancellationToken)
+    public async Task<ActionResult<DollarRateDto>> PostAsync([FromBody] UpsertDollarRateRequest request, CancellationToken cancellationToken)
     {
         if (request is null)
+        {
+            return BadRequest();
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Source))
         {
             return BadRequest();
         }
@@ -27,47 +33,19 @@ public sealed class DollarRatesController : ControllerBase
         {
             return BadRequest();
         }
-        
-        if (string.IsNullOrWhiteSpace(request.Source))
-        {
-            return BadRequest();
-        }
 
-        var existing = await _dbContext.DollarRates
-            .FirstOrDefaultAsync(
-                rate => rate.DollarType == request.DollarType && rate.RateDate == request.RateDate,
-                cancellationToken);
+        var result = await _mediator.Send(new UpsertDollarRateCommand(
+            request.DollarType,
+            request.Rate,
+            request.RateDate,
+            request.IsManual,
+            request.Source), cancellationToken);
 
-        if (existing is null)
-        {
-            existing = new DollarRate
-            {
-                Id = Guid.NewGuid(),
-                DollarType = request.DollarType,
-                Rate = request.Rate,
-                RateDate = request.RateDate,
-                IsManual = request.IsManual,
-                Source = request.Source,
-                CreatedAt = DateTime.UtcNow
-            };
-
-            _dbContext.DollarRates.Add(existing);
-        }
-        else
-        {
-            existing.Rate = request.Rate;
-            existing.IsManual = request.IsManual;
-            existing.Source = request.Source;
-            existing.CreatedAt = DateTime.UtcNow;
-        }
-
-        await _dbContext.SaveChangesAsync(cancellationToken);
-
-        return StatusCode(StatusCodes.Status201Created, existing);
+        return StatusCode(StatusCodes.Status201Created, result);
     }
 }
 
-public sealed record CreateDollarRateRequest(
+public sealed record UpsertDollarRateRequest(
     DollarType DollarType,
     decimal Rate,
     DateOnly RateDate,
